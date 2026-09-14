@@ -77,6 +77,12 @@ pnpm start
 
 ## Configuration
 
+### Attachment preview
+
+Uploaded file cards open an authenticated reader in the resizable right-hand panel while the chat remains visible on the left. PDF files use the browser PDF viewer, common images render directly, and text formats are loaded as plain text. Office documents (`.doc[x]`, `.xls[x]`, `.ppt[x]`) use the converted Markdown path returned by the upload API; enable `uploads.auto_convert_documents` in the backend configuration to make those previews available. The original file remains downloadable from the reader.
+
+Tender-review responses may append a validated `tender-review` JSON block. The message renderer hides that machine-readable block and shows one card per finding with separate tender-file evidence and legal basis. Evidence actions reuse the right-hand reader, jump PDFs to the cited physical page, and highlight exact quotes in text previews.
+
 ### Environment Variables
 
 Key environment variables (see `.env.example` for full list):

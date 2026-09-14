@@ -88,6 +88,28 @@ class _DummyScheduledTask:
         return None
 
 
+def test_build_delegated_prompt_inherits_parent_uploaded_files_context():
+    runtime = _make_runtime()
+    runtime.state["uploaded_files"] = [
+        {
+            "filename": "招标文件正文.pdf",
+            "path": "/mnt/user-data/uploads/招标文件正文.md",
+            "original_path": "/mnt/user-data/uploads/招标文件正文.pdf",
+        }
+    ]
+
+    delegated = task_tool_module._build_delegated_prompt("检查资质要求", runtime)
+
+    assert delegated.endswith("检查资质要求")
+    assert "/mnt/user-data/uploads/招标文件正文.md" in delegated
+    assert "Do not treat /mnt/user-data/workspace as a substitute" in delegated
+    assert "Do not create output artifacts" in delegated
+
+
+def test_build_delegated_prompt_is_unchanged_without_uploaded_files_context():
+    assert task_tool_module._build_delegated_prompt("检查资质要求", _make_runtime()) == "检查资质要求"
+
+
 def test_task_tool_returns_error_for_unknown_subagent(monkeypatch):
     monkeypatch.setattr(task_tool_module, "get_subagent_config", lambda _: None)
     monkeypatch.setattr(task_tool_module, "get_available_subagent_names", lambda: ["general-purpose"])

@@ -514,7 +514,12 @@ export function useThreadStream({
             }
 
             if (files.length > 0) {
-              const uploadResponse = await uploadFiles(threadId, files);
+              const uploadResponse = await uploadFiles(threadId, files, {
+                agentName:
+                  typeof context.agent_name === "string"
+                    ? context.agent_name
+                    : undefined,
+              });
               uploadedFileInfo = uploadResponse.files;
 
               // Update optimistic human message with uploaded status + paths
@@ -523,6 +528,9 @@ export function useThreadStream({
                   filename: info.filename,
                   size: info.size,
                   path: info.virtual_path,
+                  ...(info.markdown_virtual_path
+                    ? { preview_path: info.markdown_virtual_path }
+                    : {}),
                   status: "uploaded" as const,
                 }),
               );
@@ -559,6 +567,9 @@ export function useThreadStream({
             filename: info.filename,
             size: info.size,
             path: info.virtual_path,
+            ...(info.markdown_virtual_path
+              ? { preview_path: info.markdown_virtual_path }
+              : {}),
             status: "uploaded" as const,
           }),
         );
@@ -595,7 +606,9 @@ export function useThreadStream({
               ...context,
               thinking_enabled: context.mode !== "flash",
               is_plan_mode: context.mode === "pro" || context.mode === "ultra",
-              subagent_enabled: context.mode === "ultra",
+              subagent_enabled:
+                context.mode === "ultra" ||
+                extraContext?.subagent_enabled === true,
               reasoning_effort:
                 context.reasoning_effort ??
                 (context.mode === "ultra"

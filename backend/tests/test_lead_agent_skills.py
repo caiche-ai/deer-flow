@@ -219,6 +219,114 @@ def test_make_lead_agent_all_legacy_skills_preserve_all_tools(monkeypatch):
     assert [tool.name for tool in agent_kwargs["tools"]] == ["bash", "read_file", "update_agent"]
 
 
+def test_repository_managed_agent_does_not_receive_self_update_tool(monkeypatch):
+    from unittest.mock import MagicMock
+
+    from deerflow.agents.lead_agent import agent as lead_agent_module
+
+    monkeypatch.setattr(lead_agent_module, "_resolve_model_name", lambda x=None, **kwargs: "default-model")
+    monkeypatch.setattr(lead_agent_module, "create_chat_model", lambda **kwargs: "model")
+    monkeypatch.setattr(lead_agent_module, "_build_middlewares", lambda *args, **kwargs: [])
+    monkeypatch.setattr(lead_agent_module, "apply_prompt_template", lambda **kwargs: "mock_prompt")
+    monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
+    monkeypatch.setattr(
+        lead_agent_module,
+        "load_agent_config",
+        lambda x: AgentConfig(name="tender-review", skills=None),
+    )
+    monkeypatch.setattr(lead_agent_module, "is_builtin_agent", lambda name: True)
+    monkeypatch.setattr(
+        lead_agent_module,
+        "_load_enabled_skills_for_tool_policy",
+        lambda available_skills, *, app_config: [],
+    )
+    monkeypatch.setattr(
+        "deerflow.tools.get_available_tools",
+        lambda **kwargs: [NamedTool("read_file")],
+    )
+
+    mock_app_config = MagicMock()
+    mock_app_config.get_model_config.return_value = SimpleNamespace(supports_thinking=False, supports_vision=False)
+    monkeypatch.setattr(lead_agent_module, "get_app_config", lambda: mock_app_config)
+
+    agent_kwargs = lead_agent_module.make_lead_agent({"configurable": {"agent_name": "tender-review"}})
+
+    assert [tool.name for tool in agent_kwargs["tools"]] == ["read_file"]
+
+
+def test_named_agent_config_overrides_prompt_and_disables_subagents(monkeypatch):
+    from unittest.mock import MagicMock
+
+    from deerflow.agents.lead_agent import agent as lead_agent_module
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        lead_agent_module,
+        "_resolve_model_name",
+        lambda x=None, **kwargs: "default-model",
+    )
+    monkeypatch.setattr(lead_agent_module, "create_chat_model", lambda **kwargs: "model")
+    monkeypatch.setattr(lead_agent_module, "is_builtin_agent", lambda name: True)
+    monkeypatch.setattr(
+        lead_agent_module,
+        "load_agent_config",
+        lambda x: AgentConfig(
+            name="tender-review",
+            skills=["tender-document-review"],
+            system_prompt_path="agents/tender-review/lead_agent.yaml",
+            subagent_enabled=False,
+        ),
+    )
+    monkeypatch.setattr(
+        lead_agent_module,
+        "_load_enabled_skills_for_tool_policy",
+        lambda available_skills, *, app_config: [],
+    )
+
+    def fake_get_available_tools(**kwargs):
+        captured["tools_subagent_enabled"] = kwargs["subagent_enabled"]
+        return [NamedTool("read_file")]
+
+    def fake_build_middlewares(*args, **kwargs):
+        captured["middleware_subagent_enabled"] = kwargs["subagent_enabled"]
+        return []
+
+    def fake_apply_prompt_template(**kwargs):
+        captured["prompt_path"] = kwargs["system_prompt_path"]
+        captured["prompt_subagent_enabled"] = kwargs["subagent_enabled"]
+        return "tender prompt"
+
+    monkeypatch.setattr("deerflow.tools.get_available_tools", fake_get_available_tools)
+    monkeypatch.setattr(lead_agent_module, "_build_middlewares", fake_build_middlewares)
+    monkeypatch.setattr(lead_agent_module, "apply_prompt_template", fake_apply_prompt_template)
+    monkeypatch.setattr(lead_agent_module, "create_agent", lambda **kwargs: kwargs)
+
+    mock_app_config = MagicMock()
+    mock_app_config.get_model_config.return_value = SimpleNamespace(
+        supports_thinking=False,
+        supports_vision=False,
+    )
+
+    agent_kwargs = lead_agent_module._make_lead_agent(
+        {
+            "configurable": {
+                "agent_name": "tender-review",
+                "subagent_enabled": True,
+            }
+        },
+        app_config=mock_app_config,
+    )
+
+    assert agent_kwargs["system_prompt"] == "tender prompt"
+    assert captured == {
+        "tools_subagent_enabled": False,
+        "middleware_subagent_enabled": False,
+        "prompt_path": "agents/tender-review/lead_agent.yaml",
+        "prompt_subagent_enabled": False,
+    }
+
+
 def test_make_lead_agent_enforces_allowed_tools_when_skill_cache_is_cold(monkeypatch):
     from unittest.mock import MagicMock
 

@@ -175,6 +175,14 @@ def update_agent(
     if skills is not None and skills != existing_cfg.skills:
         updated_fields.append("skills")
 
+    # These runtime policy fields are repository/operator managed rather than
+    # editable through update_agent, but rewriting another field must not drop
+    # them from an existing named-agent config.
+    if existing_cfg.system_prompt_path is not None:
+        config_data["system_prompt_path"] = existing_cfg.system_prompt_path
+    if existing_cfg.subagent_enabled is not None:
+        config_data["subagent_enabled"] = existing_cfg.subagent_enabled
+
     config_changed = bool({"description", "model", "tool_groups", "skills"} & set(updated_fields))
 
     # Stage every file we intend to rewrite into a temp sibling. Only after

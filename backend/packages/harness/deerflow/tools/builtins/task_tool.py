@@ -183,6 +183,48 @@ def _merge_skill_allowlists(parent: list[str] | None, child: list[str] | None) -
     return [skill for skill in child if skill in parent_set]
 
 
+def _build_delegated_prompt(prompt: str, runtime: Any) -> str:
+    """Attach verified parent-thread file paths to an isolated subagent task."""
+    if runtime is None:
+        return prompt
+    state = getattr(runtime, "state", None)
+    if not isinstance(state, dict):
+        return prompt
+    uploaded_files = state.get("uploaded_files")
+    if not isinstance(uploaded_files, list) or not uploaded_files:
+        return prompt
+
+    entries: list[str] = []
+    for file in uploaded_files:
+        if not isinstance(file, dict):
+            continue
+        filename = file.get("filename")
+        path = file.get("path")
+        if not isinstance(filename, str) or not filename or not isinstance(path, str) or not path:
+            continue
+        entries.append(f"- {filename}\n  Path: {path}")
+        original_path = file.get("original_path")
+        if isinstance(original_path, str) and original_path:
+            entries[-1] += f"\n  Original file: {original_path}"
+
+    if not entries:
+        return prompt
+
+    file_context = "\n".join(entries)
+    return f"""<parent_uploaded_files>
+The following verified files from the parent thread are available to this subtask:
+{file_context}
+</parent_uploaded_files>
+
+File handling requirements:
+- Read the listed Path values directly. A converted Markdown path is the primary text source; do not try to parse the original PDF with text tools.
+- Do not treat /mnt/user-data/workspace as a substitute for /mnt/user-data/uploads, and do not report a file missing before checking its listed Path.
+- Do not create output artifacts unless the delegated task explicitly requests them; return findings to the parent agent.
+
+Delegated task:
+{prompt}"""
+
+
 @tool("task", parse_docstring=True)
 async def task_tool(
     runtime: Runtime,
@@ -313,7 +355,7 @@ async def task_tool(
 
     # Start background execution (always async to prevent blocking)
     # Use tool_call_id as task_id for better traceability
-    task_id = executor.execute_async(prompt, task_id=tool_call_id)
+    task_id = executor.execute_async(_build_delegated_prompt(prompt, runtime), task_id=tool_call_id)
 
     # Poll for task completion in backend (removes need for LLM to poll)
     poll_count = 0

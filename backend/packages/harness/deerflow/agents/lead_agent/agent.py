@@ -37,7 +37,7 @@ from deerflow.agents.middlewares.token_usage_middleware import TokenUsageMiddlew
 from deerflow.agents.middlewares.tool_error_handling_middleware import build_lead_runtime_middlewares
 from deerflow.agents.middlewares.view_image_middleware import ViewImageMiddleware
 from deerflow.agents.thread_state import ThreadState
-from deerflow.config.agents_config import load_agent_config, validate_agent_name
+from deerflow.config.agents_config import is_builtin_agent, load_agent_config, validate_agent_name
 from deerflow.config.app_config import AppConfig, get_app_config
 from deerflow.models import create_chat_model
 from deerflow.skills.tool_policy import filter_tools_by_skill_allowed_tools
@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 
 def _get_runtime_config(config: RunnableConfig) -> dict:
-    """Merge legacy configurable options with LangGraph runtime context.""" 
+    """Merge legacy configurable options with LangGraph runtime context."""
     cfg = dict(config.get("configurable", {}) or {})
     context = config.get("context", {}) or {}
     if isinstance(context, dict):
@@ -268,6 +268,7 @@ def _build_middlewares(
     agent_name: str | None = None,
     custom_middlewares: list[AgentMiddleware] | None = None,
     *,
+    subagent_enabled: bool | None = None,
     app_config: AppConfig | None = None,
 ):
     """Build middleware chain based on runtime configuration.
@@ -324,8 +325,8 @@ def _build_middlewares(
         middlewares.append(DeferredToolFilterMiddleware())
 
     # Add SubagentLimitMiddleware to truncate excess parallel task calls
-    subagent_enabled = cfg.get("subagent_enabled", False)
-    if subagent_enabled:
+    effective_subagent_enabled = cfg.get("subagent_enabled", False) if subagent_enabled is None else subagent_enabled
+    if effective_subagent_enabled:
         max_concurrent_subagents = cfg.get("max_concurrent_subagents", 3)
         middlewares.append(SubagentLimitMiddleware(max_concurrent=max_concurrent_subagents))
 
@@ -360,7 +361,7 @@ def _load_enabled_skills_for_tool_policy(available_skills: set[str] | None, *, a
         logger.exception("Failed to load skills for allowed-tools policy")
         raise
 
-    if available_skills is None: # None就不过滤skills,原样返回
+    if available_skills is None:  # None就不过滤skills,原样返回
         return skills
     return [skill for skill in skills if skill.name in available_skills]
 
@@ -372,39 +373,43 @@ def make_lead_agent(config: RunnableConfig):
     return _make_lead_agent(config, app_config=runtime_app_config or get_app_config())
 
 
-def _make_lead_agent(config: RunnableConfig, *, app_config: AppConfig): 
+def _make_lead_agent(config: RunnableConfig, *, app_config: AppConfig):
     # Lazy import to avoid circular dependency
     from deerflow.tools import get_available_tools
     from deerflow.tools.builtins import setup_agent, update_agent
 
     # config：运行时配置（本次请求参数），app_config：系统能力蓝图（静态配置）
     cfg = _get_runtime_config(config)
-    resolved_app_config = app_config # 完整的 Agent 运行系统蓝图
-# ┌───────────┬──────────────────┬──────────────┬──────────────────┬──────────────────┐
-# │ 前端 mode │ thinking_enabled │ is_plan_mode │ subagent_enabled │ reasoning_effort │
-# ├───────────┼──────────────────┼──────────────┼──────────────────┼──────────────────┤
-# │ flash     │ false            │ false        │ false            │ undefined        │
-# ├───────────┼──────────────────┼──────────────┼──────────────────┼──────────────────┤
-# │ thinking  │ true             │ false        │ false            │ low              │
-# ├───────────┼──────────────────┼──────────────┼──────────────────┼──────────────────┤
-# │ pro       │ true             │ true         │ false            │ medium           │
-# ├───────────┼──────────────────┼──────────────┼──────────────────┼──────────────────┤
-# │ ultra     │ true             │ true         │ true             │ high             │
-# └───────────┴──────────────────┴──────────────┴──────────────────┴──────────────────┘
-    thinking_enabled = cfg.get("thinking_enabled", True) # 是否给模型开思考模式，默认true，但后面还会通过supports_thinking二次校验，不支持则降级关闭
-    reasoning_effort = cfg.get("reasoning_effort", None) # 思考力度档位（如 low/medium/high）。None = 不指定,交给模型/provider 默认
-    requested_model_name: str | None = cfg.get("model_name") or cfg.get("model") # 前端要求的模型
+    resolved_app_config = app_config  # 完整的 Agent 运行系统蓝图
+    # ┌───────────┬──────────────────┬──────────────┬──────────────────┬──────────────────┐
+    # │ 前端 mode │ thinking_enabled │ is_plan_mode │ subagent_enabled │ reasoning_effort │
+    # ├───────────┼──────────────────┼──────────────┼──────────────────┼──────────────────┤
+    # │ flash     │ false            │ false        │ false            │ undefined        │
+    # ├───────────┼──────────────────┼──────────────┼──────────────────┼──────────────────┤
+    # │ thinking  │ true             │ false        │ false            │ low              │
+    # ├───────────┼──────────────────┼──────────────┼──────────────────┼──────────────────┤
+    # │ pro       │ true             │ true         │ false            │ medium           │
+    # ├───────────┼──────────────────┼──────────────┼──────────────────┼──────────────────┤
+    # │ ultra     │ true             │ true         │ true             │ high             │
+    # └───────────┴──────────────────┴──────────────┴──────────────────┴──────────────────┘
+    thinking_enabled = cfg.get("thinking_enabled", True)  # 是否给模型开思考模式，默认true，但后面还会通过supports_thinking二次校验，不支持则降级关闭
+    reasoning_effort = cfg.get("reasoning_effort", None)  # 思考力度档位（如 low/medium/high）。None = 不指定,交给模型/provider 默认
+    requested_model_name: str | None = cfg.get("model_name") or cfg.get("model")  # 前端要求的模型
     is_plan_mode = cfg.get("is_plan_mode", False)
-    subagent_enabled = cfg.get("subagent_enabled", False) # 是否允许委派子 agent。开启后才加 task 工具 + SubagentLimitMiddleware
-    max_concurrent_subagents = cfg.get("max_concurrent_subagents", 3) # 没有前端入口,前端不传,实际恒为默认值 3
-    is_bootstrap = cfg.get("is_bootstrap", False) # 用户自定义agent
+    subagent_enabled = cfg.get("subagent_enabled", False)  # 是否允许委派子 agent。开启后才加 task 工具 + SubagentLimitMiddleware
+    max_concurrent_subagents = cfg.get("max_concurrent_subagents", 3)  # 没有前端入口,前端不传,实际恒为默认值 3
+    is_bootstrap = cfg.get("is_bootstrap", False)  # 用户自定义agent
 
     ### 如果用户不是在前端自定义agent的窗口中发送的消息,则下面全为 None,唯一会破例的是新建 agent 的 bootstrap 路径,这个不用管
     # agent_name：自定义 agent 窗口发的消息才非 None（前端在 configurable 里带上），否则为 None；非法名会抛 ValueError
-    agent_name = validate_agent_name(cfg.get("agent_name")) # 在用户前端自定义agent窗口发送的消息，才有 agent_name（走单独路由）
+    agent_name = validate_agent_name(cfg.get("agent_name"))  # 在用户前端自定义agent窗口发送的消息，才有 agent_name（走单独路由）
     # agent_config：该自定义 agent 的配置（model / tool_groups / skills / description；人格在 SOUL.md）
     agent_config = load_agent_config(agent_name) if not is_bootstrap else None  # 否则按 agent_name 读 .deer-flow/users/{user_id}/agents/{agent_name}/config.yaml
-    available_skills = _available_skill_names(agent_config, is_bootstrap) 
+    if agent_config and agent_config.subagent_enabled is not None:
+        # The named agent owns this policy. In particular, a client cannot turn
+        # subagents back on for a lead-only repository-managed agent.
+        subagent_enabled = agent_config.subagent_enabled
+    available_skills = _available_skill_names(agent_config, is_bootstrap)
     # Custom agent model from agent config (if any), or None to let _resolve_model_name pick the default
     agent_model_name = agent_config.model if agent_config and agent_config.model else None
 
@@ -465,13 +470,18 @@ def _make_lead_agent(config: RunnableConfig, *, app_config: AppConfig):
     # 如果 available_skills 是 None 则不过滤，否则skills_for_tool_policy = available_skills
     skills_for_tool_policy = _load_enabled_skills_for_tool_policy(available_skills, app_config=resolved_app_config)
 
-    if is_bootstrap:    # 用户在前端自己新增skill才为true
+    if is_bootstrap:  # 用户在前端自己新增skill才为true
         # Special bootstrap agent with minimal prompt for initial custom agent creation flow
         tools = get_available_tools(model_name=model_name, subagent_enabled=subagent_enabled, app_config=resolved_app_config) + [setup_agent]
         return create_agent(
             model=create_chat_model(name=model_name, thinking_enabled=thinking_enabled, app_config=resolved_app_config, attach_tracing=False),
             tools=filter_tools_by_skill_allowed_tools(tools, skills_for_tool_policy),
-            middleware=_build_middlewares(config, model_name=model_name, app_config=resolved_app_config),
+            middleware=_build_middlewares(
+                config,
+                model_name=model_name,
+                subagent_enabled=subagent_enabled,
+                app_config=resolved_app_config,
+            ),
             system_prompt=apply_prompt_template(
                 subagent_enabled=subagent_enabled,
                 max_concurrent_subagents=max_concurrent_subagents,
@@ -483,7 +493,7 @@ def _make_lead_agent(config: RunnableConfig, *, app_config: AppConfig):
 
     # Custom agents can update their own SOUL.md / config via update_agent.
     # The default agent (no agent_name) does not see this tool.
-    extra_tools = [update_agent] if agent_name else []
+    extra_tools = [update_agent] if agent_name and not is_builtin_agent(agent_name) else []
     # Default lead agent (unchanged behavior),按 gent_config.tool_groups中 agent 声明的工具组装配工具集
     # model_name：决定是否加 view_image_tool(取决于模型是否支持 vision)
     # 按 tool.group 过滤 config 工具;None 表示全要;正如上面备注所说,只要不是自定义agent窗口发送的请求,agent_config为None
@@ -491,16 +501,24 @@ def _make_lead_agent(config: RunnableConfig, *, app_config: AppConfig):
     return create_agent(
         model=create_chat_model(name=model_name, thinking_enabled=thinking_enabled, reasoning_effort=reasoning_effort, app_config=resolved_app_config, attach_tracing=False),
         tools=filter_tools_by_skill_allowed_tools(tools + extra_tools, skills_for_tool_policy),
-        middleware=_build_middlewares(config, model_name=model_name, agent_name=agent_name, app_config=resolved_app_config),
+        middleware=_build_middlewares(
+            config,
+            model_name=model_name,
+            agent_name=agent_name,
+            subagent_enabled=subagent_enabled,
+            app_config=resolved_app_config,
+        ),
         system_prompt=apply_prompt_template(
             subagent_enabled=subagent_enabled,
             max_concurrent_subagents=max_concurrent_subagents,
             agent_name=agent_name,
-            available_skills=set(agent_config.skills) if agent_config and agent_config.skills is not None else None, 
+            available_skills=set(agent_config.skills) if agent_config and agent_config.skills is not None else None,
+            system_prompt_path=agent_config.system_prompt_path if agent_config else None,
             app_config=resolved_app_config,
         ),
         state_schema=ThreadState,
     )
+
 
 # ┌─────────────────────────────────────────┬────────────────────────────────────────────────┐
 # │                  取值                    │                      含义                      │

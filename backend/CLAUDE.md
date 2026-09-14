@@ -156,7 +156,7 @@ from deerflow.config import get_app_config
 Lead-agent middlewares are assembled in strict append order across `packages/harness/deerflow/agents/middlewares/tool_error_handling_middleware.py` (`build_lead_runtime_middlewares`) and `packages/harness/deerflow/agents/lead_agent/agent.py` (`_build_middlewares`):
 
 1. **ThreadDataMiddleware** - Creates per-thread directories under the user's isolation scope (`backend/.deer-flow/users/{user_id}/threads/{thread_id}/user-data/{workspace,uploads,outputs}`); resolves `user_id` via `get_effective_user_id()` (falls back to `"default"` in no-auth mode); Web UI thread deletion now follows LangGraph thread removal with Gateway cleanup of the local thread directory
-2. **UploadsMiddleware** - Tracks and injects newly uploaded files into conversation
+2. **UploadsMiddleware** - Tracks and injects new and historical uploaded files into conversation; keeps the complete verified attachment set in state so `task` can propagate file paths across clarification turns
 3. **SandboxMiddleware** - Acquires sandbox, stores `sandbox_id` in state
 4. **DanglingToolCallMiddleware** - Injects placeholder ToolMessages for AIMessage tool_calls that lack responses (e.g., due to user interruption), including raw provider tool-call payloads preserved only in `additional_kwargs["tool_calls"]`
 5. **LLMErrorHandlingMiddleware** - Normalizes provider/model invocation failures into recoverable assistant-facing errors before later middleware/tool stages run
@@ -236,6 +236,19 @@ CORS is same-origin by default when requests enter through nginx on port 2026. S
 | **Thread Runs** (`/api/threads/{id}/runs`) | `POST /` - create background run; `POST /stream` - create + SSE stream; `POST /wait` - create + block; `GET /` - list runs; `GET /{rid}` - run details; `POST /{rid}/cancel` - cancel; `GET /{rid}/join` - join SSE; `GET /{rid}/messages` - paginated messages `{data, has_more}`; `GET /{rid}/events` - full event stream; `GET /../messages` - thread messages with feedback; `GET /../token-usage` - aggregate tokens |
 | **Feedback** (`/api/threads/{id}/runs/{rid}/feedback`) | `PUT /` - upsert feedback; `DELETE /` - delete user feedback; `POST /` - create feedback; `GET /` - list feedback; `GET /stats` - aggregate stats; `DELETE /{fid}` - delete specific |
 | **Runs** (`/api/runs`) | `POST /stream` - stateless run + SSE; `POST /wait` - stateless run + block; `GET /{rid}/messages` - paginated messages by run_id `{data, has_more}` (cursor: `after_seq`/`before_seq`); `GET /{rid}/feedback` - list feedback by run_id |
+| **Tender Review** (`/api/tender-review`) | `GET /documents` - list MinerU documents; `POST /tasks` - launch Lead with natural-language `request`; `GET /tasks/{id}` - snapshot; `POST /tasks/{id}/resume` - append natural-language clarification `message`; `GET /tasks/{id}/events` - replayable SSE; `GET /tasks/{id}/report` - JSON/Markdown; `POST /tasks/{id}/findings/{fid}/action` - audit action |
+
+Tender-review task state is persisted under `tender-review/data/review_results/api/users/<user-hash>/<task-id>` and source/report paths are constrained to their configured roots. Every new task is clarified by the Lead Agent through `ask_clarification`; the create API launches that first turn and the resume API forwards the user's text without interpreting confirmation or profile fields. The Agent thread uses the configured checkpointer, while the domain state keeps a self-contained profile/previous-question snapshot for recovery. SSE is display-only and replays events from `after_sequence` or `Last-Event-ID`.
+
+The dedicated tender-review Agent builds a lazy parent-child retrieval layer for each task: page-scoped evidence chunks remain authoritative, while 420-character overlapping children are embedded by the BGE endpoint and fused with BM25 through reciprocal-rank fusion. The same Agent exposes filtered pgvector search over the three public tender corpora. Knowledge results use separate `basis_ids` and must be re-read before report persistence; embedding failure falls back to lexical document retrieval. Runtime overrides use `TENDER_REVIEW_EMBEDDING_URL`, `TENDER_REVIEW_EMBEDDING_MODEL`, `TENDER_REVIEW_EMBEDDING_TIMEOUT`, `TENDER_REVIEW_EMBEDDING_BATCH_SIZE`, `TENDER_REVIEW_CHILD_CHARS`, `TENDER_REVIEW_CHILD_OVERLAP`, and `TENDER_REVIEW_TENANT_ID`.
+
+The relational tender knowledge-base schema is registered under `deerflow.persistence.knowledge`. PostgreSQL remains authoritative for corpora, project/document/version metadata, traceable chunks, tender requirements, reusable bid evidence, access membership, ingestion jobs, and vector outbox state. Vector data is a rebuildable projection keyed by `kb_chunk_embeddings.vector_id`, so pgvector can be replaced by Milvus without changing the business tables. See `docs/TENDER_KNOWLEDGE_BASE.md` for table semantics, the pgvector projection DDL, and cutover invariants.
+
+The server deployment reuses the rootless `postgres` container on host port `5433` with image `pgvector/pgvector:pg16-trixie`. Preserve the existing `ce_cost` database; DeerFlow uses its own `deerflow` role and database. Docker Gateway DSNs use `host.docker.internal:5433`.
+
+Repository-managed built-in agents live under root `agents/<name>/` and are discovered between per-user and legacy shared agents. `agents/tender-review/` supplies the all-user tender-agent SOUL/config and is read-only at runtime; built-in agents do not receive the self-update tool.
+The backend image copies `tender-review/src` and `agents/`; Compose mounts the agent definitions read-only and mounts tender data (production) or the full tender project (development), because backend declares `tender-review` as an editable local path dependency.
+The standard chat upload call includes its `agent_name`. For `tender-review` PDF uploads, the Gateway calls the MinerU API (`TENDER_REVIEW_MINERU_API_URL`, default `http://172.19.2.2:18000/mineru/file_parse`) in a worker thread, stores a page-annotated sibling Markdown file plus `_content_list.json`, and injects the Markdown virtual path into agent context. `TENDER_REVIEW_MINERU_BACKEND` and `TENDER_REVIEW_MINERU_TIMEOUT` override the engine and read timeout. Other agents continue to follow `uploads.auto_convert_documents`.
 
 **RunManager / RunStore contract**:
 - `RunManager.get()` is async; direct callers must `await` it.
@@ -566,7 +579,7 @@ Multi-file upload with automatic document conversion:
 - Reuses one conversion worker per request when called from an active event loop
 - Files stored in thread-isolated directories
 - Duplicate filenames in a single upload request are auto-renamed with `_N` suffixes so later files do not truncate earlier files
-- Agent receives uploaded file list via `UploadsMiddleware`
+- Agent receives uploaded file list via `UploadsMiddleware`; the `task` tool prepends verified parent-thread paths to isolated subagent prompts, preferring converted Markdown and preventing an empty workspace from being mistaken for missing uploads
 
 See [docs/FILE_UPLOAD.md](docs/FILE_UPLOAD.md) for details.
 
@@ -613,3 +626,4 @@ See `docs/` directory for detailed documentation:
 - [PATH_EXAMPLES.md](docs/PATH_EXAMPLES.md) - Path types and usage
 - [summarization.md](docs/summarization.md) - Context summarization
 - [plan_mode_usage.md](docs/plan_mode_usage.md) - Plan mode with TodoList
+- [TENDER_KNOWLEDGE_BASE.md](docs/TENDER_KNOWLEDGE_BASE.md) - Tender knowledge-base schema and vector projection contract

@@ -81,6 +81,8 @@ class TestAgentConfig:
         assert cfg.description == ""
         assert cfg.model is None
         assert cfg.tool_groups is None
+        assert cfg.system_prompt_path is None
+        assert cfg.subagent_enabled is None
 
     def test_full_config(self):
         from deerflow.config.agents_config import AgentConfig
@@ -90,10 +92,14 @@ class TestAgentConfig:
             description="Specialized for code review",
             model="deepseek-v3",
             tool_groups=["file:read", "bash"],
+            system_prompt_path="agents/code-reviewer/lead_agent.yaml",
+            subagent_enabled=False,
         )
         assert cfg.name == "code-reviewer"
         assert cfg.model == "deepseek-v3"
         assert cfg.tool_groups == ["file:read", "bash"]
+        assert cfg.system_prompt_path == "agents/code-reviewer/lead_agent.yaml"
+        assert cfg.subagent_enabled is False
 
     def test_config_from_dict(self):
         from deerflow.config.agents_config import AgentConfig
@@ -111,6 +117,47 @@ class TestAgentConfig:
 
 
 class TestLoadAgentConfig:
+    def test_loads_repository_managed_builtin_agent(self, tmp_path):
+        builtin_root = tmp_path / "builtin-agents"
+        _write_agent(
+            builtin_root.parent,
+            "tender-review",
+            {
+                "skills": ["tender-document-review"],
+                "system_prompt_path": "agents/tender-review/lead_agent.yaml",
+                "subagent_enabled": False,
+            },
+        )
+        (builtin_root.parent / "agents").rename(builtin_root)
+
+        with (
+            patch("deerflow.config.agents_config.get_paths", return_value=_make_paths(tmp_path / "runtime")),
+            patch("deerflow.config.agents_config.get_builtin_agents_dir", return_value=builtin_root),
+        ):
+            from deerflow.config.agents_config import load_agent_config
+
+            cfg = load_agent_config("tender-review")
+
+        assert cfg.name == "tender-review"
+        assert cfg.skills == ["tender-document-review"]
+        assert cfg.system_prompt_path == "agents/tender-review/lead_agent.yaml"
+        assert cfg.subagent_enabled is False
+
+    def test_builtin_agent_is_identified_as_read_only(self, tmp_path):
+        builtin_root = tmp_path / "builtin-agents"
+        builtin = builtin_root / "tender-review"
+        builtin.mkdir(parents=True)
+        (builtin / "config.yaml").write_text("name: tender-review\n", encoding="utf-8")
+
+        with patch(
+            "deerflow.config.agents_config.get_builtin_agents_dir",
+            return_value=builtin_root,
+        ):
+            from deerflow.config.agents_config import is_builtin_agent
+
+            assert is_builtin_agent("tender-review") is True
+            assert is_builtin_agent("user-agent") is False
+
     def test_load_valid_config(self, tmp_path):
         config_dict = {"name": "code-reviewer", "description": "Code review agent", "model": "deepseek-v3"}
         _write_agent(tmp_path, "code-reviewer", config_dict)
@@ -256,6 +303,22 @@ class TestLoadAgentSoul:
 
 
 class TestListCustomAgents:
+    def test_includes_repository_managed_builtin_agents(self, tmp_path):
+        builtin_root = tmp_path / "builtin-agents"
+        builtin = builtin_root / "tender-review"
+        builtin.mkdir(parents=True)
+        (builtin / "config.yaml").write_text("name: tender-review\ndescription: Tender agent\n", encoding="utf-8")
+
+        with (
+            patch("deerflow.config.agents_config.get_paths", return_value=_make_paths(tmp_path / "runtime")),
+            patch("deerflow.config.agents_config.get_builtin_agents_dir", return_value=builtin_root),
+        ):
+            from deerflow.config.agents_config import list_custom_agents
+
+            agents = list_custom_agents()
+
+        assert [agent.name for agent in agents] == ["tender-review"]
+
     def test_empty_when_no_agents_dir(self, tmp_path):
         with patch("deerflow.config.agents_config.get_paths", return_value=_make_paths(tmp_path)):
             from deerflow.config.agents_config import list_custom_agents

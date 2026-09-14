@@ -4,6 +4,15 @@
  */
 import "./src/env.js";
 
+const configuredProxyTimeout = Number.parseInt(
+  process.env.DEER_FLOW_PROXY_TIMEOUT_MS ?? "3600000",
+  10,
+);
+const proxyTimeout =
+  Number.isFinite(configuredProxyTimeout) && configuredProxyTimeout > 0
+    ? configuredProxyTimeout
+    : 3600000;
+
 function getInternalServiceURL(envKey, fallbackURL) {
   const configured = process.env[envKey]?.trim();
   return configured && configured.length > 0
@@ -13,6 +22,11 @@ function getInternalServiceURL(envKey, fallbackURL) {
 /** @type {import("next").NextConfig} */
 const config = {
   devIndicators: false,
+  // Next's rewrite proxy defaults to 30 seconds. Tender PDF uploads wait for
+  // MinerU parsing, so large documents need a substantially longer timeout.
+  experimental: {
+    proxyTimeout,
+  },
   // 桌面壳（desktop/）需独立 node 产物：standalone 会把 server.js + 最小 runtime 输出到
   // .next/standalone，由 Electron fork 起子进程。对现有 web 部署无影响（next start 仍照常）。
   output: "standalone",

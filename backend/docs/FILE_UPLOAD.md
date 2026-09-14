@@ -112,6 +112,8 @@ DELETE /api/threads/{thread_id}/uploads/{filename}
 
 转换后的 Markdown 文件会保存在同一目录下，文件名为原文件名 + `.md` 扩展名。
 
+前端附件卡片支持在聊天页右侧分栏在线阅读，聊天内容保留在左侧：PDF 和常见图片读取原始 `virtual_path`，文本文件直接读取，Office 文件读取上传响应中的 `markdown_virtual_path`，同时保留原文件下载入口。因此需要 Office 在线预览的受信任部署应启用 `uploads.auto_convert_documents: true`；转换失败时仍可下载原文件。
+
 默认情况下，自动转换是关闭的，以避免在网关主机上对不受信任的 Office/PDF 上传执行解析。只有在受信任部署中明确接受此风险时，才应将 `uploads.auto_convert_documents` 设置为 `true`。
 
 ## Agent 集成
@@ -306,9 +308,8 @@ async function listFiles(threadId: string) {
 
 ### 扩展功能建议
 
-1. **文件预览**：添加预览端点，支持在浏览器中直接查看文件
-2. **批量删除**：支持一次删除多个文件
-3. **文件搜索**：支持按文件名或类型搜索
-4. **版本控制**：保留文件的多个版本
-5. **压缩包支持**：自动解压 zip 文件
+1. **批量删除**：支持一次删除多个文件
+2. **文件搜索**：支持按文件名或类型搜索
+3. **版本控制**：保留文件的多个版本
+4. **压缩包支持**：自动解压 zip 文件
 6. **图片 OCR**：对上传的图片进行 OCR 识别

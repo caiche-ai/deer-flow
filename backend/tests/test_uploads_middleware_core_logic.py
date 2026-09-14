@@ -313,6 +313,7 @@ class TestBeforeAgent:
         assert "new.txt" in content
         assert "previous messages" in content
         assert "old.txt" in content
+        assert {file["filename"] for file in result["uploaded_files"]} == {"new.txt", "old.txt"}
 
     def test_no_historical_section_when_upload_dir_is_empty(self, tmp_path):
         mw = _middleware(tmp_path)
@@ -367,6 +368,8 @@ class TestBeforeAgent:
         assert "ITEM 1. BUSINESS" in content
         assert "ITEM 2. RISK" in content
         assert "read_file" in content
+        assert "Path: /mnt/user-data/uploads/report.md" in content
+        assert "Original PDF: /mnt/user-data/uploads/report.pdf" in content
 
     def test_no_outline_when_no_md_file(self, tmp_path):
         """Files without a sibling .md have no outline section."""
@@ -434,6 +437,8 @@ class TestBeforeAgent:
         content = result["messages"][-1].content
         assert "Chapter 1" in content
         assert "Chapter 2" in content
+        assert content.count("- old_report.pdf") == 1
+        assert "- old_report.md" not in content
 
     def test_fallback_preview_shown_when_outline_empty(self, tmp_path):
         """When .md exists but has no headings, first lines are shown as a preview."""

@@ -763,14 +763,17 @@ def _build_custom_mounts_section(*, app_config: AppConfig | None = None) -> str:
     return f"\n**Custom Mounted Directories:**\n{mounts_list}\n- If the user needs files outside `/mnt/user-data`, use these absolute container paths directly when they match the requested directory"
 
 
-def _resolve_system_prompt_template(app_config: AppConfig | None) -> str:
+def _resolve_system_prompt_template(
+    app_config: AppConfig | None,
+    system_prompt_path: str | None = None,
+) -> str:
     """Return the lead-agent system-prompt template, honouring a config override.
 
-    When ``app_config.lead_agent.system_prompt_path`` is set, the template is read
-    from that file (relative paths resolve against the project root); otherwise the
-    built-in ``SYSTEM_PROMPT_TEMPLATE`` is used. A missing/unreadable override file
-    logs a warning and falls back to the built-in default so a bad path never takes
-    the agent down in production.
+    An explicit ``system_prompt_path`` (for example from a named AgentConfig) takes
+    precedence over ``app_config.lead_agent.system_prompt_path``. Paths resolve
+    against the project roots. When neither is set, the built-in
+    ``SYSTEM_PROMPT_TEMPLATE`` is used. A missing/unreadable override logs a warning
+    and falls back to the built-in default so a bad path never takes the agent down.
 
     The override file must only use ``{placeholders}`` that are a subset of the
     kwargs passed to ``SYSTEM_PROMPT_TEMPLATE.format`` below, or ``.format`` raises
@@ -791,7 +794,7 @@ def _resolve_system_prompt_template(app_config: AppConfig | None) -> str:
             return SYSTEM_PROMPT_TEMPLATE
 
     lead_agent_config = getattr(config, "lead_agent", None)
-    template_path = getattr(lead_agent_config, "system_prompt_path", None)
+    template_path = system_prompt_path or getattr(lead_agent_config, "system_prompt_path", None)
     if not template_path:
         return SYSTEM_PROMPT_TEMPLATE
     from deerflow.config.lead_agent_config import resolve_system_prompt_file
@@ -829,6 +832,7 @@ def apply_prompt_template(
     *,
     agent_name: str | None = None,
     available_skills: set[str] | None = None,
+    system_prompt_path: str | None = None,
     app_config: AppConfig | None = None,
 ) -> str:
     # Include subagent section only if enabled (from runtime parameter)
@@ -860,7 +864,7 @@ def apply_prompt_template(
     # Memory and current date are injected per-turn via DynamicContextMiddleware
     # as a <system-reminder> in the first HumanMessage, keeping this prompt
     # identical across users and sessions for maximum prefix-cache reuse.
-    return _resolve_system_prompt_template(app_config).format(
+    return _resolve_system_prompt_template(app_config, system_prompt_path).format(
         agent_name=agent_name or "MAgent",
         soul=get_agent_soul(agent_name),
         self_update_section=_build_self_update_section(agent_name),

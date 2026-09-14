@@ -396,6 +396,8 @@ export interface FileInMessage {
   filename: string;
   size: number; // bytes
   path?: string; // virtual path, may not be set during upload
+  preview_path?: string; // converted Markdown or another browser-readable preview
+  original_path?: string; // original upload when path points at a converted preview
   status?: "uploading" | "uploaded";
 }
 
@@ -477,15 +479,21 @@ export function parseUploadedFiles(content: string): FileInMessage[] {
 
   // Parse file list
   // Format: - filename (size)\n  Path: /path/to/file
-  const fileRegex = /- ([^\n(]+)\s*\(([^)]+)\)\s*\n\s*Path:\s*([^\n]+)/g;
+  const fileRegex =
+    /- ([^\n(]+)\s*\(([^)]+)\)\s*\n\s*Path:\s*([^\n]+)(?:\n\s*Original PDF:\s*([^\n]+))?/g;
   const files: FileInMessage[] = [];
   let fileMatch;
 
   while ((fileMatch = fileRegex.exec(uploadedFilesContent ?? "")) !== null) {
+    const listedPath = fileMatch[3].trim();
+    const originalPath = fileMatch[4]?.trim();
     files.push({
       filename: fileMatch[1].trim(),
       size: parseInt(fileMatch[2].trim(), 10) ?? 0,
-      path: fileMatch[3].trim(),
+      path: originalPath ?? listedPath,
+      ...(originalPath
+        ? { preview_path: listedPath, original_path: originalPath }
+        : {}),
     });
   }
 

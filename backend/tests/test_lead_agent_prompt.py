@@ -416,6 +416,16 @@ def test_resolve_system_prompt_template_reads_override_file(tmp_path):
     assert prompt_module._resolve_system_prompt_template(config) == "VARIANT for {agent_name}"
 
 
+def test_explicit_agent_prompt_takes_precedence_over_global_prompt(tmp_path):
+    global_override = tmp_path / "global.txt"
+    global_override.write_text("GLOBAL", encoding="utf-8")
+    agent_override = tmp_path / "agent.txt"
+    agent_override.write_text("AGENT for {agent_name}", encoding="utf-8")
+    config = SimpleNamespace(lead_agent=SimpleNamespace(system_prompt_path=str(global_override)))
+
+    assert prompt_module._resolve_system_prompt_template(config, str(agent_override)) == "AGENT for {agent_name}"
+
+
 def test_resolve_system_prompt_template_falls_back_on_missing_file(tmp_path, caplog):
     config = SimpleNamespace(lead_agent=SimpleNamespace(system_prompt_path=str(tmp_path / "does-not-exist.txt")))
 
@@ -527,6 +537,32 @@ def test_apply_prompt_template_uses_override_template(monkeypatch, tmp_path):
     prompt = prompt_module.apply_prompt_template(app_config=config, agent_name="CostBot")
 
     assert prompt == "OVERRIDE PROMPT for CostBot"
+
+
+def test_tender_agent_prompt_renders_as_lead_only(monkeypatch):
+    from pathlib import Path
+
+    tender_prompt = Path(__file__).resolve().parent.parent.parent / "agents" / "tender-review" / "lead_agent.yaml"
+    config = SimpleNamespace(
+        sandbox=SimpleNamespace(mounts=[]),
+        skills=SimpleNamespace(container_path="/mnt/skills"),
+        lead_agent=SimpleNamespace(system_prompt_path="benchmark/prompts/lead_agent_v7.yaml"),
+    )
+    monkeypatch.setattr(prompt_module, "get_skills_prompt_section", lambda *args, **kwargs: "")
+    monkeypatch.setattr(prompt_module, "get_deferred_tools_prompt_section", lambda **kwargs: "")
+    monkeypatch.setattr(prompt_module, "_build_acp_section", lambda **kwargs: "")
+    monkeypatch.setattr(prompt_module, "get_agent_soul", lambda agent_name=None: "")
+
+    prompt = prompt_module.apply_prompt_template(
+        app_config=config,
+        agent_name="tender-review",
+        system_prompt_path=str(tender_prompt),
+    )
+
+    assert "面向招标文件编制和发布前审核的 Lead Agent" in prompt
+    assert "八维覆盖计划" in prompt
+    assert "禁止调用 `task`" in prompt
+    assert "深圳市房建专业智能组价助手" not in prompt
 
 
 def test_project_config_points_lead_agent_to_ce_prompt():

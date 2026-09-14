@@ -8,6 +8,7 @@ per-user layout.
 """
 
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,10 @@ class AgentConfig(BaseModel):
     description: str = ""
     model: str | None = None
     tool_groups: list[str] | None = None
+    # Named agents may replace the global lead prompt and may explicitly disable
+    # runtime subagent requests made by the client.
+    system_prompt_path: str | None = None
+    subagent_enabled: bool | None = None
     # skills controls which skills are loaded into the agent's prompt:
     # - None (or omitted): load all enabled skills (default fallback behavior)
     # - [] (explicit empty list): disable all skills
@@ -49,12 +54,32 @@ class AgentConfig(BaseModel):
     skills: list[str] | None = None
 
 
+def get_builtin_agents_dir() -> Path:
+    """Return the repository-managed, read-only agent definition directory."""
+
+    if configured := os.getenv("DEER_FLOW_BUILTIN_AGENTS_DIR"):
+        return Path(configured).expanduser().resolve()
+    base_dir = get_paths().base_dir
+    candidates = (base_dir.parent / "agents", base_dir.parent.parent / "agents")
+    return next((path for path in candidates if path.is_dir()), candidates[0])
+
+
+def is_builtin_agent(name: str | None) -> bool:
+    """Return whether *name* is backed by a repository-managed definition."""
+
+    if not name:
+        return False
+    candidate = get_builtin_agents_dir() / name.lower()
+    return candidate.is_dir() and (candidate / "config.yaml").is_file()
+
+
 def resolve_agent_dir(name: str, *, user_id: str | None = None) -> Path:
     """Return the on-disk directory for an agent, preferring the per-user layout.
 
     Resolution order:
     1. ``{base_dir}/users/{user_id}/agents/{name}/`` (per-user, current layout).
-    2. ``{base_dir}/agents/{name}/`` (legacy shared layout — read-only fallback).
+    2. ``{repository}/agents/{name}/`` (repository-managed built-in agent).
+    3. ``{base_dir}/agents/{name}/`` (legacy shared layout — read-only fallback).
 
     If neither exists, the per-user path is returned so callers that intend to
     create the agent write into the new layout.
@@ -69,6 +94,10 @@ def resolve_agent_dir(name: str, *, user_id: str | None = None) -> Path:
     user_path = paths.user_agent_dir(effective_user, name)
     if user_path.exists():
         return user_path
+
+    builtin_path = get_builtin_agents_dir() / name
+    if builtin_path.exists():
+        return builtin_path
 
     legacy_path = paths.agent_dir(name)
     if legacy_path.exists():
@@ -154,9 +183,8 @@ def load_agent_soul(agent_name: str | None, *, user_id: str | None = None) -> st
 def list_custom_agents(*, user_id: str | None = None) -> list[AgentConfig]:
     """Scan the agents directory and return all valid custom agents.
 
-    Returns the union of agents in the per-user layout and the legacy shared
-    layout, so that pre-migration installations remain visible until they are
-    migrated. Per-user entries shadow legacy entries with the same name.
+    Returns the union of per-user, repository-managed built-in and legacy
+    shared agents. Earlier roots shadow later roots with the same name.
 
     Args:
         user_id: Owner whose agents to list. Defaults to the effective user
@@ -174,7 +202,7 @@ def list_custom_agents(*, user_id: str | None = None) -> list[AgentConfig]:
     user_root = paths.user_agents_dir(effective_user)
     legacy_root = paths.agents_dir
 
-    for root in (user_root, legacy_root):
+    for root in (user_root, get_builtin_agents_dir(), legacy_root):
         if not root.exists():
             continue
         for entry in sorted(root.iterdir()):

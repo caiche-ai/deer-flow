@@ -19,9 +19,10 @@ import {
   useArtifacts,
 } from "../artifacts";
 import { useThread } from "../messages/context";
+import { DocumentPreviewPanel } from "../messages/document-preview-panel";
 
 const CLOSE_MODE = { chat: 100, artifacts: 0 };
-const OPEN_MODE = { chat: 60, artifacts: 40 };
+const OPEN_MODE = { chat: 50, artifacts: 50 };
 
 const ChatBox: React.FC<{ children: React.ReactNode; threadId: string }> = ({
   children,
@@ -40,6 +41,7 @@ const ChatBox: React.FC<{ children: React.ReactNode; threadId: string }> = ({
     select: selectArtifact,
     deselect,
     selectedArtifact,
+    selectedDocument,
   } = useArtifacts();
 
   const [autoSelectFirstArtifact, setAutoSelectFirstArtifact] = useState(true);
@@ -80,11 +82,14 @@ const ChatBox: React.FC<{ children: React.ReactNode; threadId: string }> = ({
   ]);
 
   const artifactPanelOpen = useMemo(() => {
+    if (selectedDocument) {
+      return artifactsOpen;
+    }
     if (env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true") {
       return artifactsOpen && artifacts?.length > 0;
     }
     return artifactsOpen;
-  }, [artifactsOpen, artifacts]);
+  }, [artifactsOpen, artifacts, selectedDocument]);
 
   const resizableIdBase = useMemo(() => {
     return pathname.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
@@ -130,7 +135,21 @@ const ChatBox: React.FC<{ children: React.ReactNode; threadId: string }> = ({
             artifactPanelOpen ? "translate-x-0" : "translate-x-full",
           )}
         >
-          {selectedArtifact ? (
+          {selectedDocument ? (
+            <DocumentPreviewPanel
+              className="size-full"
+              filename={selectedDocument.filename}
+              path={selectedDocument.path}
+              previewPath={selectedDocument.previewPath}
+              url={selectedDocument.url}
+              page={selectedDocument.page}
+              quote={selectedDocument.quote}
+              section={selectedDocument.section}
+              clause={selectedDocument.clause}
+              threadId={threadId}
+              onClose={() => setArtifactsOpen(false)}
+            />
+          ) : selectedArtifact ? (
             <ArtifactFileDetail
               className="size-full"
               filepath={selectedArtifact}

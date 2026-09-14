@@ -17,6 +17,15 @@ export interface UploadedFileInfo {
   markdown_path?: string;
   markdown_virtual_path?: string;
   markdown_artifact_url?: string;
+  content_list_file?: string;
+  content_list_virtual_path?: string;
+  page_count?: string;
+  parse_elapsed_seconds?: string;
+  parser?: string;
+}
+
+export interface UploadOptions {
+  agentName?: string;
 }
 
 export interface UploadResponse {
@@ -34,8 +43,16 @@ async function readErrorDetail(
   response: Response,
   fallback: string,
 ): Promise<string> {
-  const error = await response.json().catch(() => ({ detail: fallback }));
-  return error.detail ?? fallback;
+  const body = await response.text().catch(() => "");
+  if (!body.trim()) {
+    return fallback;
+  }
+  try {
+    const error = JSON.parse(body) as { detail?: unknown };
+    return typeof error.detail === "string" ? error.detail : fallback;
+  } catch {
+    return body.slice(0, 1000);
+  }
 }
 
 /**
@@ -44,6 +61,7 @@ async function readErrorDetail(
 export async function uploadFiles(
   threadId: string,
   files: File[],
+  options?: UploadOptions,
 ): Promise<UploadResponse> {
   const formData = new FormData();
 
@@ -51,8 +69,13 @@ export async function uploadFiles(
     formData.append("files", file);
   });
 
+  const query = new URLSearchParams();
+  if (options?.agentName) {
+    query.set("agent_name", options.agentName);
+  }
+  const queryString = query.size > 0 ? `?${query.toString()}` : "";
   const response = await fetch(
-    `${getBackendBaseURL()}/api/threads/${threadId}/uploads`,
+    `${getBackendBaseURL()}/api/threads/${threadId}/uploads${queryString}`,
     {
       method: "POST",
       body: formData,

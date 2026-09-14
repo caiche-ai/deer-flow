@@ -39,6 +39,10 @@ The frontend is a stateful chat application. Users create **threads** (conversat
 ### Source Layout (`src/`)
 
 - **`app/`** — Next.js App Router. Routes: `/` (redirects to `/workspace`), `/login` + `/setup` (auth), `/workspace/chats/[thread_id]` (chat). Marketing landing/blog/docs pages were removed — only the post-login harness remains.
+- **Tender agent** — the “招投标智能体” sidebar entry opens the standard custom-agent chat at `/workspace/agents/tender-review/chats/new`; `/workspace/tender-review` is a compatibility redirect. The repository-managed agent definition lives at `../agents/tender-review/`, selects its own Lead prompt through `system_prompt_path`, and forces `subagent_enabled: false` while retaining the standard upload/history/artifact UI.
+- **Long upload proxying** — Next rewrites default to a 30-second upstream timeout, which is shorter than MinerU parsing for large PDFs. `next.config.js` sets `experimental.proxyTimeout` to one hour by default; override it with `DEER_FLOW_PROXY_TIMEOUT_MS`. Do not remove this while tender upload parsing is synchronous.
+- **Attachment reader** — uploaded file cards open `DocumentPreviewPanel` in the resizable right-hand chat panel. PDF and images use their original authenticated artifact URL; text is fetched through the authenticated API wrapper; Office files use `markdown_virtual_path` from the upload response. Keep original and preview paths separate so tender PDFs remain visually faithful while Agent text extraction continues to use MinerU Markdown.
+- **Tender evidence cards** — `core/tender-review/findings.ts` validates the fenced `tender-review` JSON contract before `TenderReviewFindings` renders it. Never execute or trust paths from model output: only `/mnt/user-data/...` artifact paths and HTTP(S) source URLs are accepted. Evidence clicks reuse `DocumentPreviewPanel` with physical page and exact-quote anchors.
 - **`components/`** — React components split into:
   - `ui/` — Shadcn UI primitives (auto-generated, ESLint-ignored)
   - `ai-elements/` — Vercel AI SDK elements (auto-generated, ESLint-ignored)
@@ -65,6 +69,8 @@ The frontend is a stateful chat application. Users create **threads** (conversat
 2. Stream events update thread state (messages, artifacts, todos)
 3. TanStack Query manages server state; localStorage stores user settings
 4. Components subscribe to thread state and render updates
+
+Tender review uses the normal LangGraph conversation stream. Its separate task REST/SSE contract remains a backend capability for future structured cards; do not build a second full-page workbench that duplicates the standard chat UI.
 
 ### Key Patterns
 

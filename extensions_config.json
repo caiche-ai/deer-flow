@@ -117,6 +117,12 @@
     },
     "cost-workflow-guide": {
       "enabled": true
+    },
+    "tender-document-review": {
+      "enabled": true
+    },
+    "tender-template-completeness": {
+      "enabled": true
     }
   }
 }

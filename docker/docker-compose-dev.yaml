@@ -137,6 +137,8 @@ services:
       # take effect on `make docker-restart` without requiring an image rebuild.
       - ./dev-entrypoint.sh:/usr/local/bin/dev-entrypoint.sh:ro
       - ../backend/:/app/backend/
+      - ../tender-review/:/app/tender-review/
+      - ../agents:/app/agents:ro
       # Preserve the .venv built during Docker image build — mounting the full backend/
       # directory above would otherwise shadow it with the (empty) host directory.
       - gateway-venv:/app/backend/.venv

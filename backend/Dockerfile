@@ -43,6 +43,9 @@ COPY --from=uv-source /uv /uvx /usr/local/bin/
 WORKDIR /app
 
 # Copy backend source code
+COPY tender-review/pyproject.toml ./tender-review/pyproject.toml
+COPY tender-review/src ./tender-review/src
+COPY agents ./agents
 COPY backend ./backend
 
 # Install dependencies with cache mount
@@ -93,6 +96,8 @@ WORKDIR /app
 
 # Copy backend with pre-built virtualenv from builder
 COPY --from=builder /app/backend ./backend
+COPY --from=builder /app/tender-review ./tender-review
+COPY --from=builder /app/agents ./agents
 
 # Expose ports (gateway: 8001, langgraph: 2024)
 EXPOSE 8001 2024

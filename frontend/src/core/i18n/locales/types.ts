@@ -222,6 +222,30 @@ export interface Translations {
   uploads: {
     uploading: string;
     uploadingFiles: string;
+    preview: string;
+    download: string;
+    loadingPreview: string;
+    previewFailed: string;
+    previewUnavailable: string;
+  };
+
+  tenderReview: {
+    title: string;
+    findingCount: (count: number) => string;
+    issue: string;
+    issueEvidence: string;
+    legalBasis: string;
+    recommendation: string;
+    viewOriginal: string;
+    openSource: string;
+    sourcePreviewUnavailable: string;
+    page: (page: number) => string;
+    severity: {
+      info: string;
+      minor: string;
+      major: string;
+      blocker: string;
+    };
   };
 
   // Subtasks

@@ -1,5 +1,6 @@
 """Upload router for handling file uploads."""
 
+import asyncio
 import logging
 import os
 import stat
@@ -167,6 +168,13 @@ def _auto_convert_documents_enabled(app_config: AppConfig) -> bool:
         return False
 
 
+async def _parse_tender_pdf(file_path: os.PathLike[str] | str):
+    """Run the tender-specific MinerU client without blocking the event loop."""
+    from tender_review.mineru import parse_pdf_with_mineru
+
+    return await asyncio.to_thread(parse_pdf_with_mineru, file_path)
+
+
 @router.post("", response_model=UploadResponse)
 @require_permission("threads", "write", owner_check=True, require_existing=False)
 async def upload_files(
@@ -174,6 +182,7 @@ async def upload_files(
     request: Request,
     files: list[UploadFile] = File(...),
     config: AppConfig = Depends(get_config),
+    agent_name: str | None = None,
 ) -> UploadResponse:
     """Upload multiple files to a thread's uploads directory."""
     if not files:
@@ -248,7 +257,31 @@ async def upload_files(
             logger.info(f"Saved file: {safe_filename} ({file_size} bytes) to {file_info['path']}")
 
             file_ext = file_path.suffix.lower()
-            if auto_convert_documents and file_ext in CONVERTIBLE_EXTENSIONS:
+            if agent_name == "tender-review" and file_ext == ".pdf":
+                parsed = await _parse_tender_pdf(file_path)
+                md_path = parsed.markdown_path
+                content_list_path = parsed.content_list_path
+                written_paths.extend((md_path, content_list_path))
+                md_virtual_path = upload_virtual_path(md_path.name)
+                content_virtual_path = upload_virtual_path(content_list_path.name)
+
+                if sync_to_sandbox:
+                    sandbox_sync_targets.extend(((md_path, md_virtual_path), (content_list_path, content_virtual_path)))
+
+                file_info.update(
+                    {
+                        "markdown_file": md_path.name,
+                        "markdown_path": str(sandbox_uploads / md_path.name),
+                        "markdown_virtual_path": md_virtual_path,
+                        "markdown_artifact_url": upload_artifact_url(thread_id, md_path.name),
+                        "content_list_file": content_list_path.name,
+                        "content_list_virtual_path": content_virtual_path,
+                        "page_count": str(parsed.page_count),
+                        "parse_elapsed_seconds": str(parsed.elapsed_seconds),
+                        "parser": "mineru",
+                    }
+                )
+            elif auto_convert_documents and file_ext in CONVERTIBLE_EXTENSIONS:
                 md_path = await convert_file_to_markdown(file_path)
                 if md_path:
                     written_paths.append(md_path)

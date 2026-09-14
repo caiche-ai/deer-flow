@@ -11,12 +11,30 @@ from langgraph.runtime import Runtime
 
 from deerflow.config.paths import Paths, get_paths
 from deerflow.runtime.user_context import get_effective_user_id
-from deerflow.utils.file_conversion import extract_outline
+from deerflow.utils.file_conversion import CONVERTIBLE_EXTENSIONS, extract_outline
 
 logger = logging.getLogger(__name__)
 
 
 _OUTLINE_PREVIEW_LINES = 5
+
+
+def _converted_markdown_path(file_path: Path) -> Path | None:
+    if file_path.suffix.lower() not in CONVERTIBLE_EXTENSIONS:
+        return None
+    markdown_path = file_path.with_suffix(".md")
+    return markdown_path if markdown_path.is_file() else None
+
+
+def _is_generated_sidecar(file_path: Path) -> bool:
+    """Hide generated parse artifacts from the historical attachment list."""
+    if file_path.suffix.lower() == ".md":
+        return any(file_path.with_suffix(ext).is_file() for ext in CONVERTIBLE_EXTENSIONS)
+    suffix = "_content_list.json"
+    if file_path.name.endswith(suffix):
+        original_stem = file_path.name[: -len(suffix)]
+        return any(file_path.with_name(f"{original_stem}{ext}").is_file() for ext in CONVERTIBLE_EXTENSIONS)
+    return False
 
 
 def _extract_outline_for_file(file_path: Path) -> tuple[list[dict], list[str]]:
@@ -88,6 +106,8 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
         size_str = f"{size_kb:.1f} KB" if size_kb < 1024 else f"{size_kb / 1024:.1f} MB"
         lines.append(f"- {file['filename']} ({size_str})")
         lines.append(f"  Path: {file['path']}")
+        if file.get("original_path"):
+            lines.append(f"  Original PDF: {file['original_path']}")
         outline = file.get("outline") or []
         if outline:
             truncated = outline[-1].get("truncated", False)
@@ -174,11 +194,14 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
                 continue
             if uploads_dir is not None and not (uploads_dir / filename).is_file():
                 continue
+            original_path = f"/mnt/user-data/uploads/{filename}"
+            markdown_path = _converted_markdown_path(uploads_dir / filename) if uploads_dir else None
             files.append(
                 {
                     "filename": filename,
                     "size": int(f.get("size") or 0),
-                    "path": f"/mnt/user-data/uploads/{filename}",
+                    "path": (f"/mnt/user-data/uploads/{markdown_path.name}" if markdown_path else original_path),
+                    **({"original_path": original_path} if markdown_path else {}),
                     "extension": Path(filename).suffix,
                 }
             )
@@ -232,14 +255,17 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
         historical_files: list[dict] = []
         if uploads_dir and uploads_dir.exists():
             for file_path in sorted(uploads_dir.iterdir()):
-                if file_path.is_file() and file_path.name not in new_filenames:
+                if file_path.is_file() and file_path.name not in new_filenames and not _is_generated_sidecar(file_path):
                     stat = file_path.stat()
                     outline, preview = _extract_outline_for_file(file_path)
+                    markdown_path = _converted_markdown_path(file_path)
+                    original_path = f"/mnt/user-data/uploads/{file_path.name}"
                     historical_files.append(
                         {
                             "filename": file_path.name,
                             "size": stat.st_size,
-                            "path": f"/mnt/user-data/uploads/{file_path.name}",
+                            "path": (f"/mnt/user-data/uploads/{markdown_path.name}" if markdown_path else original_path),
+                            **({"original_path": original_path} if markdown_path else {}),
                             "extension": file_path.suffix,
                             "outline": outline,
                             "outline_preview": preview,
@@ -290,6 +316,9 @@ class UploadsMiddleware(AgentMiddleware[UploadsMiddlewareState]):
         messages[last_message_index] = updated_message
 
         return {
-            "uploaded_files": new_files,
+            # Keep the complete verified attachment set in state so tools that
+            # run after a clarification turn can still pass historical uploads
+            # to isolated subagents.
+            "uploaded_files": [*new_files, *historical_files],
             "messages": messages,
         }

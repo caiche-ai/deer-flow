@@ -23,6 +23,7 @@ from app.gateway.routers import (
     runs,
     skills,
     suggestions,
+    tender_review,
     thread_runs,
     threads,
     uploads,
@@ -374,6 +375,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Stateless Runs API (stream/wait without a pre-existing thread)
     app.include_router(runs.router)
+
+    # Long-running tender-document review API and SSE progress stream
+    app.include_router(tender_review.router)
 
     @app.get("/health", tags=["health"])
     async def health_check() -> dict[str, str]:

@@ -684,6 +684,10 @@ DeerFlow is model-agnostic — it works with any LLM that implements the OpenAI-
 - **Multimodal inputs** for image understanding and video comprehension
 - **Strong tool-use** for reliable function calling and structured outputs
 
+## Tender-review PDF uploads
+
+The repository-managed `tender-review` agent uses the normal chat interface. Its PDF upload request carries `agent_name=tender-review`, causing the Gateway to parse the document with MinerU before the run starts. The resulting sibling Markdown contains physical-page markers and is the path exposed to text tools; the original PDF and MinerU content list remain available for evidence checks. Configure the service with `TENDER_REVIEW_MINERU_API_URL`, `TENDER_REVIEW_MINERU_BACKEND`, and `TENDER_REVIEW_MINERU_TIMEOUT` when the defaults are unsuitable. Next.js rewrite proxying defaults to a one-hour timeout for this long-running upload path and can be overridden with `DEER_FLOW_PROXY_TIMEOUT_MS`. Generic chat uploads retain the `uploads.auto_convert_documents` policy.
+
 ## Embedded Python Client
 
 DeerFlow can be used as an embedded Python library without running the full HTTP services. The `DeerFlowClient` provides direct in-process access to all agent and Gateway capabilities, returning the same response schemas as the HTTP Gateway API. The HTTP Gateway also exposes `DELETE /api/threads/{thread_id}` to remove DeerFlow-managed local thread data after the LangGraph thread itself has been deleted:

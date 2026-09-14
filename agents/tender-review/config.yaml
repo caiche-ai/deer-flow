@@ -1,0 +1,7 @@
+name: tender-review
+description: 面向大型招标文件的发布前智能审核，由 Lead Agent 直接完成证据定位、风险分析与报告生成。
+system_prompt_path: agents/tender-review/lead_agent.yaml
+subagent_enabled: false
+skills:
+  - tender-document-review
+  - tender-template-completeness

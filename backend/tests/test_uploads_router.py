@@ -144,6 +144,52 @@ def test_upload_files_does_not_auto_convert_documents_by_default(tmp_path):
     assert not (thread_uploads_dir / "report.md").exists()
 
 
+def test_tender_agent_pdf_upload_uses_mineru_even_when_generic_conversion_is_disabled(tmp_path):
+    thread_uploads_dir = tmp_path / "uploads"
+    thread_uploads_dir.mkdir(parents=True)
+    provider = MagicMock()
+    provider.uses_thread_data_mounts = True
+
+    async def fake_mineru(file_path: Path):
+        md_path = file_path.with_suffix(".md")
+        content_list_path = file_path.with_name(f"{file_path.stem}_content_list.json")
+        md_path.write_text("<!-- page: 1 -->\n正文", encoding="utf-8")
+        content_list_path.write_text("[]", encoding="utf-8")
+        return SimpleNamespace(
+            markdown_path=md_path,
+            content_list_path=content_list_path,
+            page_count=12,
+            elapsed_seconds=4.25,
+        )
+
+    with (
+        patch.object(uploads, "ensure_uploads_dir", return_value=thread_uploads_dir),
+        patch.object(uploads, "get_sandbox_provider", return_value=provider),
+        patch.object(uploads, "_auto_convert_documents_enabled", return_value=False),
+        patch.object(uploads, "_parse_tender_pdf", AsyncMock(side_effect=fake_mineru)) as mineru,
+        patch.object(uploads, "convert_file_to_markdown", AsyncMock()) as generic_convert,
+    ):
+        file = UploadFile(filename="招标文件.pdf", file=BytesIO(b"pdf-bytes"))
+        result = asyncio.run(
+            call_unwrapped(
+                uploads.upload_files,
+                "thread-tender",
+                request=MagicMock(),
+                files=[file],
+                config=SimpleNamespace(),
+                agent_name="tender-review",
+            )
+        )
+
+    mineru.assert_awaited_once_with(thread_uploads_dir / "招标文件.pdf")
+    generic_convert.assert_not_called()
+    file_info = result.files[0]
+    assert file_info["markdown_file"] == "招标文件.md"
+    assert file_info["content_list_file"] == "招标文件_content_list.json"
+    assert file_info["page_count"] == "12"
+    assert file_info["parser"] == "mineru"
+
+
 def test_upload_files_syncs_non_local_sandbox_and_marks_markdown_file(tmp_path):
     thread_uploads_dir = tmp_path / "uploads"
     thread_uploads_dir.mkdir(parents=True)

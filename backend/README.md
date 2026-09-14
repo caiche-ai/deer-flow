@@ -55,7 +55,7 @@ Middlewares execute in strict order, each handling a specific concern:
 | # | Middleware | Purpose |
 |---|-----------|---------|
 | 1 | **ThreadDataMiddleware** | Creates per-thread isolated directories (workspace, uploads, outputs) |
-| 2 | **UploadsMiddleware** | Injects newly uploaded files into conversation context |
+| 2 | **UploadsMiddleware** | Injects new and historical uploaded files into conversation context and subagent tasks |
 | 3 | **SandboxMiddleware** | Acquires sandbox environment for code execution |
 | 4 | **SummarizationMiddleware** | Reduces context when approaching token limits (optional) |
 | 5 | **TodoListMiddleware** | Tracks multi-step tasks in plan mode (optional) |
@@ -84,6 +84,7 @@ Async task delegation with concurrent execution:
 - **Concurrency**: Max 3 subagents per turn, 15-minute timeout
 - **Execution**: Background thread pools with status tracking and SSE events
 - **Flow**: Agent calls `task()` tool → executor runs subagent in background → polls for completion → returns result
+- **Upload inheritance**: Isolated subagents receive the parent thread's verified upload paths, including converted Markdown and historical uploads after clarification turns
 
 ### Memory System
 
@@ -119,7 +120,7 @@ FastAPI application providing REST endpoints for frontend integration:
 | `POST /api/memory/reload` | Force memory reload |
 | `GET /api/memory/config` | Memory configuration |
 | `GET /api/memory/status` | Combined config + data |
-| `POST /api/threads/{id}/uploads` | Upload files (auto-converts PDF/PPT/Excel/Word to Markdown, rejects directory paths, auto-renames duplicate filenames in one request) |
+| `POST /api/threads/{id}/uploads` | Upload files (generic document conversion follows `uploads.auto_convert_documents`; `?agent_name=tender-review` always parses PDF through MinerU into page-annotated Markdown and a content list; rejects directory paths and auto-renames duplicate filenames in one request) |
 | `GET /api/threads/{id}/uploads/list` | List uploaded files |
 | `DELETE /api/threads/{id}` | Delete DeerFlow-managed local thread data after LangGraph thread deletion; unexpected failures are logged server-side and return a generic 500 detail |
 | `GET /api/threads/{id}/artifacts/{path}` | Serve generated artifacts |
@@ -401,6 +402,7 @@ uv run pytest
 - [Path Examples](docs/PATH_EXAMPLES.md)
 - [Context Summarization](docs/summarization.md)
 - [Plan Mode](docs/plan_mode_usage.md)
+- [Tender Knowledge Base Schema](docs/TENDER_KNOWLEDGE_BASE.md)
 - [Setup Guide](docs/SETUP.md)
 
 ---

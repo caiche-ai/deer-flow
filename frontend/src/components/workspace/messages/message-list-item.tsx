@@ -1,5 +1,6 @@
 import type { Message } from "@langchain/langgraph-sdk";
 import {
+  EyeIcon,
   FileIcon,
   Loader2Icon,
   ThumbsDownIcon,
@@ -45,11 +46,14 @@ import {
 } from "@/core/messages/utils";
 import { useRehypeSplitWordsIntoSpans } from "@/core/rehype";
 import { humanMessagePlugins } from "@/core/streamdown";
+import { parseTenderReviewContent } from "@/core/tender-review/findings";
 import { cn } from "@/lib/utils";
 
+import { useArtifacts } from "../artifacts/context";
 import { CopyButton } from "../copy-button";
 
 import { MarkdownContent } from "./markdown-content";
+import { TenderReviewFindings } from "./tender-review-findings";
 
 function FeedbackButtons({
   threadId,
@@ -266,6 +270,14 @@ function MessageContent_({
     return rawContent ?? "";
   }, [rawContent, isHuman]);
 
+  const tenderReviewContent = useMemo(
+    () =>
+      isHuman
+        ? { content: contentToDisplay, report: null }
+        : parseTenderReviewContent(contentToDisplay),
+    [contentToDisplay, isHuman],
+  );
+
   const filesList =
     files && files.length > 0 ? (
       <RichFilesList files={files} threadId={threadId} />
@@ -327,12 +339,15 @@ function MessageContent_({
     <AIElementMessageContent className={className}>
       {filesList}
       <MarkdownContent
-        content={contentToDisplay}
+        content={tenderReviewContent.content}
         isLoading={isLoading}
         rehypePlugins={[...rehypePlugins, [rehypeKatex, { output: "html" }]]}
         className="my-1 leading-7 [&_h1]:mt-8 [&_h1]:mb-4 [&_h2]:mt-8 [&_h2]:mb-3 [&_h3]:mt-6 [&_h3]:mb-2 [&_li]:my-1 [&_ol]:my-4 [&_p]:my-4 [&_ul]:my-4"
         components={components}
       />
+      {tenderReviewContent.report && (
+        <TenderReviewFindings report={tenderReviewContent.report} />
+      )}
     </AIElementMessageContent>
   );
 }
@@ -369,7 +384,7 @@ const FILE_TYPE_MAP: Record<string, string> = {
   gz: "GZ",
 };
 
-const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"];
+const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "bmp"];
 
 function getFileTypeLabel(filename: string): string {
   const ext = getFileExt(filename);
@@ -425,6 +440,7 @@ function RichFileCard({
   threadId: string;
 }) {
   const { t } = useI18n();
+  const { previewDocument } = useArtifacts();
   const isUploading = file.status === "uploading";
   const isImage = isImageFile(file.filename);
 
@@ -457,37 +473,49 @@ function RichFileCard({
 
   if (!file.path) return null;
 
-  const fileUrl = resolveArtifactURL(file.path, threadId);
+  const originalPath = file.path;
+  const fileUrl = resolveArtifactURL(originalPath, threadId);
+  const openPreview = () =>
+    previewDocument({
+      filename: file.filename,
+      path: originalPath,
+      previewPath: file.preview_path,
+    });
 
   if (isImage) {
     return (
-      <a
-        href={fileUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="group border-border/40 relative block overflow-hidden rounded-lg border"
+      <button
+        type="button"
+        aria-label={`${t.uploads.preview} ${file.filename}`}
+        onClick={openPreview}
+        className="group border-border/40 relative block cursor-pointer overflow-hidden rounded-lg border"
       >
         <img
           src={fileUrl}
           alt={file.filename}
           className="h-32 w-auto max-w-60 object-cover transition-transform group-hover:scale-105"
         />
-      </a>
+      </button>
     );
   }
 
   return (
-    <div className="bg-background border-border/40 flex max-w-50 min-w-30 flex-col gap-1 rounded-lg border p-3 shadow-sm">
-      <div className="flex items-start gap-2">
+    <button
+      type="button"
+      aria-label={`${t.uploads.preview} ${file.filename}`}
+      onClick={openPreview}
+      className="bg-background border-border/40 hover:bg-muted/40 flex max-w-50 min-w-30 cursor-pointer flex-col gap-1 rounded-lg border p-3 text-left shadow-sm transition-colors"
+    >
+      <div className="flex w-full items-start gap-2">
         <FileIcon className="text-muted-foreground mt-0.5 size-4 shrink-0" />
         <span
-          className="text-foreground truncate text-sm font-medium"
+          className="text-foreground min-w-0 flex-1 truncate text-sm font-medium"
           title={file.filename}
         >
           {file.filename}
         </span>
       </div>
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex w-full items-center justify-between gap-2">
         <Badge
           variant="secondary"
           className="rounded px-1.5 py-0.5 text-[10px] font-normal"
@@ -498,7 +526,11 @@ function RichFileCard({
           {formatBytes(file.size)}
         </span>
       </div>
-    </div>
+      <span className="text-primary mt-1 flex items-center gap-1 text-[11px]">
+        <EyeIcon className="size-3" />
+        {t.uploads.preview}
+      </span>
+    </button>
   );
 }
 

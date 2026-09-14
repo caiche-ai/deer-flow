@@ -1,6 +1,7 @@
 """Alembic environment for DeerFlow application tables.
 
-ONLY manages DeerFlow's tables (runs, threads_meta, cron_jobs, users).
+ONLY manages DeerFlow's application tables (runs, threads_meta, users,
+feedback, and tender knowledge-base tables).
 LangGraph's checkpointer tables are managed by LangGraph itself -- they
 have their own schema lifecycle and must not be touched by Alembic.
 """

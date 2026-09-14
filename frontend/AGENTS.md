@@ -83,6 +83,8 @@ src/
 
 - `src/app/workspace/chats/[thread_id]/page.tsx` owns composer busy-state wiring.
 - `src/core/threads/hooks.ts` owns pre-submit upload state and thread submission.
+- `src/components/workspace/messages/document-preview-panel.tsx` owns attachment reading in the shared right-hand chat panel; `src/core/uploads/preview.ts` is the single file-type routing policy. Preserve both the original upload path and the optional converted preview path in message metadata.
+- `src/core/tender-review/findings.ts` is the trust boundary for model-produced review JSON. `src/components/workspace/messages/tender-review-findings.tsx` renders only validated findings and sends evidence locations to the shared preview panel.
 - `src/hooks/usePoseStream.ts` is a passive store selector; global WebSocket lifecycle stays in `App.tsx`.
 
 ## Resources
@@ -102,6 +104,8 @@ When adding new agent features:
 4. Write unit tests under `tests/unit/` (run with `pnpm test`) and E2E tests under `tests/e2e/` (run with `pnpm test:e2e`)
 5. Update this documentation
 6. Follow the code style guide (ESLint + Prettier)
+
+The repository-managed tender agent uses the standard agent chat route. Keep `/workspace/tender-review` only as a compatibility redirect to `/workspace/agents/tender-review/chats/new`; do not duplicate the chat UI in a separate workbench.
 
 ## License
 

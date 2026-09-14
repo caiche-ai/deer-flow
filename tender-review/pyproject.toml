@@ -3,9 +3,14 @@ name = "tender-review"
 version = "0.1.0"
 description = "Evidence-grounded intelligent tender and bid review"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "requests>=2.32",
+]
 
 [project.optional-dependencies]
+agent = [
+    "deerflow-harness>=0.1.0",
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",
@@ -25,6 +30,9 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.uv.sources]
+deerflow-harness = { path = "../backend/packages/harness", editable = true }
 
 [[tool.uv.index]]
 name = "tsinghua"

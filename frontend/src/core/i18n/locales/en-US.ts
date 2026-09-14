@@ -296,6 +296,33 @@ export const enUS: Translations = {
   uploads: {
     uploading: "Uploading...",
     uploadingFiles: "Uploading files, please wait...",
+    preview: "Preview",
+    download: "Download original",
+    loadingPreview: "Loading file...",
+    previewFailed: "Failed to load the file preview.",
+    previewUnavailable:
+      "This format cannot be previewed online. Download the original file to view it.",
+  },
+
+  tenderReview: {
+    title: "Review findings",
+    findingCount: (count: number) =>
+      `${count} finding${count === 1 ? "" : "s"}`,
+    issue: "Issue",
+    issueEvidence: "Tender document evidence",
+    legalBasis: "Review basis",
+    recommendation: "Recommendation",
+    viewOriginal: "View source",
+    openSource: "Open source",
+    sourcePreviewUnavailable:
+      "No online source file is linked. This is the exact text verified during review.",
+    page: (page: number) => `Page ${page}`,
+    severity: {
+      info: "Info",
+      minor: "Minor",
+      major: "Major",
+      blocker: "Blocker",
+    },
   },
 
   subtasks: {

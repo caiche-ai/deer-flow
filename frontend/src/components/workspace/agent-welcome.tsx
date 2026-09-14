@@ -9,12 +9,14 @@ export function AgentWelcome({
   className,
   agent,
   agentName,
+  displayName: displayNameOverride,
 }: {
   className?: string;
   agent: Agent | null | undefined;
   agentName: string;
+  displayName?: string;
 }) {
-  const displayName = agent?.name ?? agentName;
+  const displayName = displayNameOverride ?? agent?.name ?? agentName;
   const description = agent?.description;
 
   return (

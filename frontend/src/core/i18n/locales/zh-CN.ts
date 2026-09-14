@@ -282,6 +282,31 @@ export const zhCN: Translations = {
   uploads: {
     uploading: "上传中...",
     uploadingFiles: "文件上传中，请稍候...",
+    preview: "预览",
+    download: "下载原文件",
+    loadingPreview: "正在加载文件...",
+    previewFailed: "文件预览加载失败。",
+    previewUnavailable: "该格式暂不支持在线预览，请下载原文件查看。",
+  },
+
+  tenderReview: {
+    title: "审核结论",
+    findingCount: (count: number) => `${count} 项问题`,
+    issue: "问题说明",
+    issueEvidence: "招标文件原文",
+    legalBasis: "审核依据",
+    recommendation: "修改建议",
+    viewOriginal: "查看原文",
+    openSource: "打开来源",
+    sourcePreviewUnavailable:
+      "当前依据未关联可在线访问的源文件，以下为核验时回读的原文。",
+    page: (page: number) => `第 ${page} 页`,
+    severity: {
+      info: "提示",
+      minor: "一般",
+      major: "重大",
+      blocker: "阻断",
+    },
   },
 
   subtasks: {

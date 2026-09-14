@@ -8,7 +8,7 @@ import { useArtifacts } from "./context";
 
 export const ArtifactTrigger = () => {
   const { t } = useI18n();
-  const { artifacts, setOpen: setArtifactsOpen } = useArtifacts();
+  const { artifacts, showArtifacts } = useArtifacts();
 
   if (!artifacts || artifacts.length === 0) {
     return null;
@@ -18,9 +18,7 @@ export const ArtifactTrigger = () => {
       <Button
         className="text-muted-foreground hover:text-foreground"
         variant="ghost"
-        onClick={() => {
-          setArtifactsOpen(true);
-        }}
+        onClick={showArtifacts}
       >
         <FilesIcon />
         {t.common.artifacts}
