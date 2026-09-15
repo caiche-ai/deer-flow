@@ -15,15 +15,15 @@
 #   cp docker/ce-code/.env.deps.example docker/ce-code/.env.deps
 #   docker compose -f docker/ce-code/docker-compose.deps.yaml --env-file docker/ce-code/.env.deps up -d
 #
-# ⚠️ 迁移注记：旧的 `docker run` 起的 ce-postgres 与系统 docker 的 anju-milvus 要先停掉再起本 compose
+# ⚠️ 迁移注记：旧的 `docker run` 起的 postgres 与系统 docker 的 anju-milvus 要先停掉再起本 compose
 #   （避免 5433/19530 端口冲突）。PG 数据卷路径已变（旧 named volume ce_pgdata → 新 bind 大盘），
 #   故首次起 PG 为空库，按 README 重新灌库（产物全在 git，幂等）：
 #     uv run python -m cost.load_pg --init-schema --scan-dir data/structured
 
 services:
   postgres:
-    image: postgres:16
-    container_name: ce-postgres
+    image: pgvector/pgvector:pg16-trixie
+    container_name: postgres
     restart: unless-stopped
     ports:
       - "5433:5432"                         # 对内网 dev 开放；config DEFAULT_DSN = localhost:5433/ce_cost

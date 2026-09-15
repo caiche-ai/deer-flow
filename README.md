@@ -688,6 +688,12 @@ DeerFlow is model-agnostic — it works with any LLM that implements the OpenAI-
 
 The repository-managed `tender-review` agent uses the normal chat interface. Its PDF upload request carries `agent_name=tender-review`, causing the Gateway to parse the document with MinerU before the run starts. The resulting sibling Markdown contains physical-page markers and is the path exposed to text tools; the original PDF and MinerU content list remain available for evidence checks. Configure the service with `TENDER_REVIEW_MINERU_API_URL`, `TENDER_REVIEW_MINERU_BACKEND`, and `TENDER_REVIEW_MINERU_TIMEOUT` when the defaults are unsuitable. Next.js rewrite proxying defaults to a one-hour timeout for this long-running upload path and can be overridden with `DEER_FLOW_PROXY_TIMEOUT_MS`. Generic chat uploads retain the `uploads.auto_convert_documents` policy.
 
+The backend also includes a PostgreSQL-first tender knowledge-base schema for versioned source documents, traceable chunks, tender requirements, reusable bid evidence, access membership, ingestion state, and backend-neutral vector synchronization. See the [tender knowledge-base schema](backend/docs/TENDER_KNOWLEDGE_BASE.md).
+
+The dedicated tender-review runtime uses page-scoped parent evidence plus small BGE retrieval children, fuses lexical and semantic ranks, and can query the active regulation, qualification-standard, and tender-template pgvector corpora. Public knowledge must be re-read into a verified `basis_id` before it can appear in a report; source-document `evidence_ids` remain mandatory and separate. Every dedicated review now starts with a Lead Agent `ask_clarification` turn; the task API forwards the original request and later user reply as natural-language messages instead of confirming or interpreting the review profile itself.
+
+The deployed knowledge database reuses the rootless `postgres` container on host port `5433`, while keeping the existing `ce_cost` and DeerFlow's `deerflow` database logically separate. The container image includes pgvector.
+
 ## Embedded Python Client
 
 DeerFlow can be used as an embedded Python library without running the full HTTP services. The `DeerFlowClient` provides direct in-process access to all agent and Gateway capabilities, returning the same response schemas as the HTTP Gateway API. The HTTP Gateway also exposes `DELETE /api/threads/{thread_id}` to remove DeerFlow-managed local thread data after the LangGraph thread itself has been deleted:
@@ -720,6 +726,7 @@ All dict-returning methods are validated against Gateway Pydantic response model
 - [Configuration Guide](backend/docs/CONFIGURATION.md) - Setup and configuration instructions
 - [Architecture Overview](backend/CLAUDE.md) - Technical architecture details
 - [Backend Architecture](backend/README.md) - Backend architecture and API reference
+- [Tender Knowledge Base Schema](backend/docs/TENDER_KNOWLEDGE_BASE.md) - Core tables and pgvector-to-Milvus projection contract
 
 ## ⚠️ Security Notice
 

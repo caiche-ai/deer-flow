@@ -194,7 +194,7 @@ uploads:
   max_files: 10
   max_file_size: 52428800
   max_total_size: 104857600
-  auto_convert_documents: false
+  auto_convert_documents: true
   pdf_converter: auto
 sandbox:
   use: deerflow.sandbox.local:LocalSandboxProvider
@@ -310,13 +310,13 @@ skill_evolution:
   enabled: false
   moderation_model_name: null
 database:
-  backend: sqlite
-  sqlite_dir: .deer-flow/data
+  backend: postgres
+  postgres_url: $DATABASE_URL
 checkpointer:
-  type: sqlite
-  connection_string: .deer-flow/data/deerflow.db
+  type: postgres
+  connection_string: $DATABASE_URL
 run_events:
-  backend: jsonl
+  backend: db
   max_trace_content: 10240
   track_token_usage: true
 channels:

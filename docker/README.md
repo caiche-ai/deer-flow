@@ -21,7 +21,7 @@
 |  | embed | 8097 | sudo GPU | 外部·先起 | `curl :8097/v1/models` | vllm-bge-large |
 |  | vLLM 8B（默认）| 8099 | sudo GPU | 外部·先起 | `curl :8099/v1/models` | vllm-qwen3-8b |
 |  | vLLM 32B（172.19.2.2）| 8001 | 另一台机 | 外部 | `curl 172.19.2.2:8001/v1/models` | （在该机）|
-|  | PostgreSQL | 5433 | rootless | deps | `pg_isready -p 5433` | ce-postgres |
+|  | PostgreSQL + pgvector | 5433 | rootless | deps | `pg_isready -p 5433` | postgres |
 |  | Milvus | 19530 | rootless | deps | `curl :9091/healthz` | ce-milvus |
 | **监控/观测** | Prometheus | 19090 | sudo host-net | ce-monitoring | `curl :19090/-/healthy` | ce-prometheus |
 |  | Grafana | 3001 | sudo host-net | ce-monitoring | `curl :3001/api/health` | ce-grafana |
@@ -31,7 +31,7 @@
 
 **注①**：gateway 不发布端口，验它连 vLLM → `sudo docker exec deer-flow-gateway python -c "import urllib.request;print(urllib.request.urlopen('http://host.docker.internal:8099/v1/models',timeout=5).status)"` 回 `200`。
 
-**日志/进容器**：`sudo docker logs -f <容器名>`、`sudo docker exec -it <容器名> sh`；rootless 的（`ce-postgres`/`ce-milvus`/`langfuse-langfuse-web-1`）去 sudo。
+**日志/进容器**：`sudo docker logs -f <容器名>`、`sudo docker exec -it <容器名> sh`；rootless 的（`postgres`/`ce-milvus`/`langfuse-langfuse-web-1`）去 sudo。
 
 **daemon**：`sudo docker`=系统 daemon（GPU/app/监控）；`docker`（无 sudo）=rootless（仅 deps 数据层 + Langfuse）。
 

@@ -11,6 +11,9 @@ dependencies = [
 agent = [
     "deerflow-harness>=0.1.0",
 ]
+knowledge = [
+    "psycopg[binary]>=3.2",
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",
